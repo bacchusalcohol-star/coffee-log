@@ -620,6 +620,11 @@
                     <input type="hidden" id="presoakMethod" name="presoak" value="default_presoak">
                 </div>
 
+                <div class="form-group hidden" id="presoakTimeGroup">
+                    <label for="presoakTime">Presoak Time (s)</label>
+                    <input type="number" id="presoakTime" name="presoak_tm" step="0.1">
+                </div>
+
                 <div class="form-group">
                     <label for="espressoGranularity">Granularity</label>
                     <input type="number" id="espressoGranularity" name="granularity" step="0.1" value="1.8">
@@ -632,7 +637,12 @@
 
                 <div class="form-group">
                     <label for="espressoWgt">Bean Weight (g)</label>
-                    <input type="number" id="espressoWgt" name="wgt" step="0.1" value="18">
+                    <input type="text" id="espressoWgt" name="wgt" value="18">
+                </div>
+
+                <div class="form-group">
+                    <label for="espressoGrdTime">Grinding Time (s)</label>
+                    <input type="number" id="espressoGrdTime" name="grd_time" step="0.1" value="6">
                 </div>
 
                 <div class="form-group">
@@ -669,11 +679,11 @@
                     <label>Brew Type</label>
                     <div class="radio-group">
                         <div class="radio-option">
-                            <input type="radio" id="hot" name="icehot" value="hot">
+                            <input type="radio" id="hot" name="icehot" value="hot" onchange="loadPourOverDefaults('hot')">
                             <label for="hot" style="margin: 0;">Hot</label>
                         </div>
                         <div class="radio-option">
-                            <input type="radio" id="ice" name="icehot" value="ice">
+                            <input type="radio" id="ice" name="icehot" value="ice" onchange="loadPourOverDefaults('ice')">
                             <label for="ice" style="margin: 0;">Ice</label>
                         </div>
                     </div>
@@ -681,12 +691,12 @@
 
                 <div class="form-group">
                     <label for="pouroverWgt">Bean Weight (g)</label>
-                    <input type="number" id="pouroverWgt" name="wgt" step="0.1" value="15">
+                    <input type="text" id="pouroverWgt" name="wgt" value="15">
                 </div>
 
                 <div class="form-group">
                     <label for="pouroverGranularity">Granularity</label>
-                    <input type="text" id="pouroverGranularity" name="granularity" value="1.8">
+                    <input type="text" id="pouroverGranularity" name="granularity" value="0">
                 </div>
 
                 <div class="form-group">
@@ -764,7 +774,8 @@
             
             <div style="margin-bottom: 20px;">
                 <button class="settings-btn" onclick="showSettingsTab('beans')" id="beansTabBtn" style="margin-right: 10px;">Coffee Beans</button>
-                <button class="settings-btn" onclick="showSettingsTab('machines')" id="machinesTabBtn">Machines</button>
+                <button class="settings-btn" onclick="showSettingsTab('machines')" id="machinesTabBtn" style="margin-right: 10px;">Machines</button>
+                <button class="settings-btn" onclick="showSettingsTab('milks')" id="milksTabBtn">Milk Types</button>
             </div>
             
             <!-- Beans Tab -->
@@ -786,6 +797,17 @@
                 <div class="add-bean-form">
                     <input type="text" id="newMachineName" placeholder="New machine name">
                     <button onclick="addMachine()">Add Machine</button>
+                </div>
+            </div>
+
+            <!-- Milk Types Tab -->
+            <div id="milksTab" class="hidden">
+                <h3 style="color: var(--accent); margin-bottom: 15px;">Milk Types</h3>
+                <ul class="bean-list" id="milkList"></ul>
+                
+                <div class="add-bean-form">
+                    <input type="text" id="newMilkName" placeholder="New milk type">
+                    <button onclick="addMilk()">Add Milk</button>
                 </div>
             </div>
         </div>
@@ -878,17 +900,22 @@
                 
                 if (data.category === 'espresso') {
                     sheetName = 'Espresso';
+                    // A: Date, B: Time, C: Beans Type, D: Grinding Time, E: Bean Weight, 
+                    // F: Granularity, G: Temp, H: Presoak Method, I: Milk Type, 
+                    // J: Milk Weight, K: Feedback, L: Presoak Time
                     rowData = [
                         data.date || '',
                         data.time || '',
                         data.beans_type || '',
+                        data.grd_time || '',
                         data.wgt || '',
                         data.granularity || '',
                         data.temp || '',
                         data.presoak || '',
                         data.milk || '',
                         data.milk_wgt || '',
-                        data.feedback || ''
+                        data.feedback || '',
+                        data.presoak_tm || ''
                     ];
                 } else if (data.category === 'pourover') {
                     sheetName = 'Pour Over';
@@ -960,8 +987,9 @@
                 const sheets = [
                     {
                         name: 'Espresso',
-                        headers: ['Date', 'Time', 'Beans Type', 'Bean Weight (g)', 'Granularity', 
-                                  'Temperature (°C)', 'Presoak Method', 'Milk Type', 'Milk Weight (g)', 'Feedback']
+                        headers: ['Date', 'Time', 'Beans Type', 'Grinding Time (s)', 'Bean Weight (g)', 
+                                  'Granularity', 'Temperature (°C)', 'Presoak Method', 'Milk Type', 
+                                  'Milk Weight (g)', 'Feedback', 'Presoak Time (s)']
                     },
                     {
                         name: 'Pour Over',
@@ -1036,6 +1064,80 @@
             updateMachinesDropdown();
         }
 
+        // Initialize default milk types in localStorage
+        function initializeMilks() {
+            if (!localStorage.getItem('coffeeMilks')) {
+                const defaultMilks = [
+                    'No Milk',
+                    'Whole Milk',
+                    'Low Fat Milk',
+                    'Oat Milk',
+                    'Almond Milk'
+                ];
+                localStorage.setItem('coffeeMilks', JSON.stringify(defaultMilks));
+            }
+            updateMilksList();
+            updateMilksDropdown();
+        }
+
+        // Update milks list in modal
+        function updateMilksList() {
+            const milks = JSON.parse(localStorage.getItem('coffeeMilks') || '[]');
+            const milkList = document.getElementById('milkList');
+            milkList.innerHTML = '';
+            
+            milks.forEach((milk, index) => {
+                const li = document.createElement('li');
+                li.className = 'bean-item';
+                li.innerHTML = `
+                    <span>${milk}</span>
+                    <button onclick="deleteMilk(${index})">Delete</button>
+                `;
+                milkList.appendChild(li);
+            });
+        }
+
+        // Update milks dropdown in form
+        function updateMilksDropdown() {
+            const milks = JSON.parse(localStorage.getItem('coffeeMilks') || '[]');
+            const select = document.getElementById('milk');
+            const currentValue = select.value;
+            
+            select.innerHTML = '';
+            milks.forEach(milk => {
+                const option = document.createElement('option');
+                option.value = milk.toLowerCase().replace(/ /g, '_');
+                option.textContent = milk;
+                select.appendChild(option);
+            });
+            
+            select.value = currentValue || 'no_milk';
+        }
+
+        // Add new milk
+        function addMilk() {
+            const input = document.getElementById('newMilkName');
+            const milkName = input.value.trim();
+            
+            if (milkName) {
+                const milks = JSON.parse(localStorage.getItem('coffeeMilks') || '[]');
+                milks.push(milkName);
+                localStorage.setItem('coffeeMilks', JSON.stringify(milks));
+                input.value = '';
+                updateMilksList();
+                updateMilksDropdown();
+            }
+        }
+
+        // Delete milk
+        function deleteMilk(index) {
+            const milks = JSON.parse(localStorage.getItem('coffeeMilks') || '[]');
+            milks.splice(index, 1);
+            localStorage.setItem('coffeeMilks', JSON.stringify(milks));
+            updateMilksList();
+            updateMilksDropdown();
+        }
+
         // Update machines list in modal
         function updateMachinesList() {
             const machines = JSON.parse(localStorage.getItem('coffeeMachines') || '[]');
@@ -1098,19 +1200,31 @@
         function showSettingsTab(tab) {
             const beansTab = document.getElementById('beansTab');
             const machinesTab = document.getElementById('machinesTab');
+            const milksTab = document.getElementById('milksTab');
             const beansBtn = document.getElementById('beansTabBtn');
             const machinesBtn = document.getElementById('machinesTabBtn');
+            const milksBtn = document.getElementById('milksTabBtn');
             
+            // Hide all tabs
+            beansTab.classList.add('hidden');
+            machinesTab.classList.add('hidden');
+            milksTab.classList.add('hidden');
+            
+            // Reset button colors
+            beansBtn.style.background = 'var(--border)';
+            machinesBtn.style.background = 'var(--border)';
+            milksBtn.style.background = 'var(--border)';
+            
+            // Show selected tab
             if (tab === 'beans') {
                 beansTab.classList.remove('hidden');
-                machinesTab.classList.add('hidden');
                 beansBtn.style.background = 'var(--accent)';
-                machinesBtn.style.background = 'var(--border)';
-            } else {
-                beansTab.classList.add('hidden');
+            } else if (tab === 'machines') {
                 machinesTab.classList.remove('hidden');
-                beansBtn.style.background = 'var(--border)';
                 machinesBtn.style.background = 'var(--accent)';
+            } else if (tab === 'milks') {
+                milksTab.classList.remove('hidden');
+                milksBtn.style.background = 'var(--accent)';
             }
         }
 
@@ -1215,18 +1329,23 @@
         function saveLastSettings(category, data) {
             const settings = {
                 espresso: {
+                    wgt: data.wgt,
+                    grd_time: data.grd_time,
                     granularity: data.granularity,
                     temp: data.temp,
-                    wgt: data.wgt,
                     presoak: data.presoak,
+                    presoak_tm: data.presoak_tm,
                     milk: data.milk,
                     milk_wgt: data.milk_wgt
                 },
                 pourover: {
+                    wgt: data.wgt,
                     granularity: data.granularity,
                     temp: data.temp,
-                    wgt: data.wgt,
-                    icehot: data.icehot
+                    icehot: data.icehot,
+                    soak_wgt: data.soak_wgt,
+                    first_wgt: data.first_wgt,
+                    second_wgt: data.second_wgt
                 }
             };
             
@@ -1235,23 +1354,104 @@
             }
         }
 
-        // Load last settings for auto-fill
+        // Load last settings for auto-fill (or use defaults if first time)
         function loadLastSettings(category) {
             const saved = localStorage.getItem(`lastSettings_${category}`);
-            if (!saved) return;
-            
-            const settings = JSON.parse(saved);
             
             if (category === 'espresso') {
+                // Default values for espresso
+                const defaults = {
+                    wgt: '18',
+                    grd_time: '6',
+                    granularity: '6',
+                    temp: '98',
+                    milk_wgt: '128'
+                };
+                
+                const settings = saved ? JSON.parse(saved) : defaults;
+                
+                if (settings.wgt) document.getElementById('espressoWgt').value = settings.wgt;
+                if (settings.grd_time) document.getElementById('espressoGrdTime').value = settings.grd_time;
                 if (settings.granularity) document.getElementById('espressoGranularity').value = settings.granularity;
                 if (settings.temp) document.getElementById('espressoTemp').value = settings.temp;
-                if (settings.wgt) document.getElementById('espressoWgt').value = settings.wgt;
                 if (settings.milk) document.getElementById('milk').value = settings.milk;
+                if (settings.milk_wgt) {
+                    const milkWgt = settings.milk_wgt;
+                    const select = document.getElementById('milkWgt');
+                    if (['15', '30', '128', '219'].includes(milkWgt.toString())) {
+                        select.value = milkWgt;
+                    } else {
+                        select.value = 'custom';
+                        document.getElementById('milkCustom').value = milkWgt;
+                        document.getElementById('milkCustomGroup').classList.remove('hidden');
+                    }
+                }
+                
+                // Restore presoak settings
+                if (settings.presoak === 'manual_presoak') {
+                    document.getElementById('presoakToggle').classList.add('active');
+                    document.getElementById('presoakMethod').value = 'manual_presoak';
+                    document.getElementById('presoakTimeGroup').classList.remove('hidden');
+                    if (settings.presoak_tm) {
+                        document.getElementById('presoakTime').value = settings.presoak_tm;
+                    }
+                }
+                
             } else if (category === 'pourover') {
+                // No saved settings - need to determine hot/ice first for defaults
+                if (!saved) {
+                    // Will be set when hot/ice is selected
+                    return;
+                }
+                
+                const settings = JSON.parse(saved);
+                
+                if (settings.wgt) document.getElementById('pouroverWgt').value = settings.wgt;
                 if (settings.granularity) document.getElementById('pouroverGranularity').value = settings.granularity;
                 if (settings.temp) document.getElementById('pouroverTemp').value = settings.temp;
-                if (settings.wgt) document.getElementById('pouroverWgt').value = settings.wgt;
+                if (settings.soak_wgt) document.getElementById('soakWgt').value = settings.soak_wgt;
+                if (settings.first_wgt) document.getElementById('firstWgt').value = settings.first_wgt;
+                if (settings.second_wgt) document.getElementById('secondWgt').value = settings.second_wgt;
             }
+        }
+
+        // Load pour over defaults based on ice/hot selection
+        function loadPourOverDefaults(iceHot) {
+            const saved = localStorage.getItem('lastSettings_pourover');
+            
+            // If has saved settings, use those instead of defaults
+            if (saved) {
+                return;
+            }
+            
+            // First time - use defaults based on hot/ice
+            const defaults = {
+                hot: {
+                    wgt: '15',
+                    granularity: '0',
+                    temp: '92',
+                    soak_wgt: '30',
+                    first_wgt: '55',
+                    second_wgt: '50'
+                },
+                ice: {
+                    wgt: '15',
+                    granularity: '0',
+                    temp: '92',
+                    soak_wgt: '30',
+                    first_wgt: '70',
+                    second_wgt: '125'
+                }
+            };
+            
+            const settings = defaults[iceHot] || defaults.hot;
+            
+            document.getElementById('pouroverWgt').value = settings.wgt;
+            document.getElementById('pouroverGranularity').value = settings.granularity;
+            document.getElementById('pouroverTemp').value = settings.temp;
+            document.getElementById('soakWgt').value = settings.soak_wgt;
+            document.getElementById('firstWgt').value = settings.first_wgt;
+            document.getElementById('secondWgt').value = settings.second_wgt;
         }
 
         // Validate form data
@@ -1268,19 +1468,13 @@
                 if (data.temp && (data.temp < 50 || data.temp > 100)) {
                     errors.push('Temperature should be between 50-100°C');
                 }
-                if (data.wgt && data.wgt <= 0) {
-                    errors.push('Bean weight must be greater than 0');
-                }
-                if (data.granularity && data.granularity <= 0) {
-                    errors.push('Granularity must be greater than 0');
-                }
+                // No validation for bean weight (now text)
+                // No validation for granularity (user can input any value)
             } else if (data.category === 'pourover') {
                 if (data.temp && (data.temp < 50 || data.temp > 100)) {
                     errors.push('Temperature should be between 50-100°C');
                 }
-                if (data.wgt && data.wgt <= 0) {
-                    errors.push('Bean weight must be greater than 0');
-                }
+                // No validation for bean weight (now text)
                 // Granularity is now text, so no numeric validation
                 if (!data.icehot) {
                     errors.push('Please select Ice or Hot');
@@ -1351,9 +1545,18 @@
         function togglePresoak() {
             const toggle = document.getElementById('presoakToggle');
             const hidden = document.getElementById('presoakMethod');
+            const timeGroup = document.getElementById('presoakTimeGroup');
             
             toggle.classList.toggle('active');
-            hidden.value = toggle.classList.contains('active') ? 'manual_presoak' : 'default_presoak';
+            
+            if (toggle.classList.contains('active')) {
+                hidden.value = 'manual_presoak';
+                timeGroup.classList.remove('hidden');
+            } else {
+                hidden.value = 'default_presoak';
+                timeGroup.classList.add('hidden');
+                // Keep the value, don't clear it
+            }
         }
 
         // Toggle milk custom input
@@ -1448,6 +1651,14 @@
             loadTheme();
             initializeBeans();
             initializeMachines();
+            initializeMilks();
+            
+            // Set default date to today
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date').value = today;
+            
+            // Set default time to morning
+            document.getElementById('morning').checked = true;
         });
 
         // Initialize Google Auth when script loads
@@ -1564,8 +1775,8 @@
             let html = '';
             
             if (category === 'espresso') {
-                // Espresso: Date, Time, Beans Type, Bean Weight, Granularity, Temp, Presoak Method, Milk Type, Milk Weight, Feedback
-                const [date, time, beans, weight, granularity, temp, presoak, milk, milkWeight, feedback] = row;
+                // Espresso: Date, Time, Beans Type, Grinding Time, Bean Weight, Granularity, Temp, Presoak Method, Milk Type, Milk Weight, Feedback, Presoak Time
+                const [date, time, beans, grdTime, weight, granularity, temp, presoak, milk, milkWeight, feedback, presoakTm] = row;
                 
                 html = `
                     <div class="log-card-header">
@@ -1574,10 +1785,12 @@
                     </div>
                     <div class="log-card-body">
                         <div class="log-card-row"><span class="log-card-label">Beans:</span> ${beans || 'N/A'}</div>
+                        ${grdTime ? `<div class="log-card-row"><span class="log-card-label">Grinding Time:</span> ${grdTime}s</div>` : ''}
                         <div class="log-card-row"><span class="log-card-label">Weight:</span> ${weight ? weight + 'g' : 'N/A'}</div>
                         <div class="log-card-row"><span class="log-card-label">Granularity:</span> ${granularity || 'N/A'}</div>
                         <div class="log-card-row"><span class="log-card-label">Temp:</span> ${temp ? temp + '°C' : 'N/A'}</div>
                         <div class="log-card-row"><span class="log-card-label">Presoak:</span> ${presoak || 'N/A'}</div>
+                        ${presoakTm && presoakTm !== '0' && presoakTm !== 0 ? `<div class="log-card-row"><span class="log-card-label">Presoak Time:</span> ${presoakTm}s</div>` : ''}
                         <div class="log-card-row"><span class="log-card-label">Milk:</span> ${milk || 'N/A'}</div>
                         <div class="log-card-row"><span class="log-card-label">Milk Weight:</span> ${milkWeight ? milkWeight + 'g' : 'N/A'}</div>
                         ${createFeedbackSection(feedback, index)}
